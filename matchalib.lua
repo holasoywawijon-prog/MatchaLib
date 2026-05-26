@@ -3,7 +3,7 @@
     MatchaLib - Roblox UI Library
     Layout: Horizontal tabs (top) + two-column content
     Style: Dark + Pink/Magenta (Matcha-inspired)
-    GitHub: your-repo-here
+    GitHub: https://raw.githubusercontent.com/holasoywawijon-prog/MatchaLib/refs/heads/main/matchalib.lua
 ]]
 
 local MatchaLib = {}
