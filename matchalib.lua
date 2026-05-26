@@ -928,8 +928,8 @@ function MatchaLib:CreateWindow(opts)
         return b
     end
 
-    local closeBtn = ctrlBtn("×", -28, Color3.fromRGB(180, 50, 50))
-    local minBtn   = ctrlBtn("−", -54, T.SurfaceHov)
+    local closeBtn = ctrlBtn("×", -32, Color3.fromRGB(180, 50, 50))
+    local minBtn   = ctrlBtn("−", -58, T.SurfaceHov)
 
     closeBtn.MouseButton1Click:Connect(function()
         tween(main, { Size = UDim2.new(0, W, 0, 0) }, 0.18)
