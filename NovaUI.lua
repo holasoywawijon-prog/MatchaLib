@@ -46,6 +46,17 @@ local TweenService = game:GetService("TweenService")
 local UserInputService = game:GetService("UserInputService")
 local RunService = game:GetService("RunService")
 local Stats = game:GetService("Stats")
+local TextService = game:GetService("TextService")
+
+local function measureText(text, size, font)
+	local ok, bounds = pcall(function()
+		return TextService:GetTextSize(text, size, font, Vector2.new(1000, 100))
+	end)
+	if ok then
+		return bounds.X
+	end
+	return #text * (size * 0.6) -- fallback estimado si GetTextSize falla
+end
 
 -- ============ HELPERS ============
 local function create(class, props)
@@ -392,30 +403,28 @@ function NovaUI:CreateWindow(title)
 	Window.ContentArea = ContentArea
 	Window.Tabs = {}
 	Window._firstTab = nil
+	Window.Overlays = {} -- listas de dropdown u otros elementos parentados fuera de Main
 
 	-- ============ TAB ============
 	function Window:CreateTab(tabName)
+		local textWidth = measureText(tabName, 13, Theme.Font)
+		local buttonWidth = math.ceil(textWidth) + 16 -- padding horizontal total
+
 		local TabButton = create("TextButton", {
 			Name = tabName,
-			Size = UDim2.new(0, 0, 1, 0),
-			AutomaticSize = Enum.AutomaticSize.X,
+			Size = UDim2.new(0, buttonWidth, 1, 0),
 			BackgroundTransparency = 1,
 			Text = "",
 			Parent = TabBar,
 		})
-		create("UIPadding", {
-			PaddingLeft = UDim.new(0, 4),
-			PaddingRight = UDim.new(0, 12),
-			Parent = TabButton,
-		})
 		local TabLabel = create("TextLabel", {
-			Size = UDim2.new(0, 0, 1, 0),
-			AutomaticSize = Enum.AutomaticSize.X,
+			Size = UDim2.new(1, 0, 1, 0),
 			BackgroundTransparency = 1,
 			Text = tabName,
 			Font = Theme.Font,
 			TextSize = 13,
 			TextColor3 = Theme.TextSecondary,
+			TextXAlignment = Enum.TextXAlignment.Center,
 			Parent = TabButton,
 		})
 
@@ -596,10 +605,21 @@ function NovaUI:CreateWindow(title)
 					Size = UDim2.new(1, 0, 0, 22),
 					BackgroundColor3 = Theme.ElementBg,
 					BorderSizePixel = 0,
+					ClipsDescendants = true,
 					LayoutOrder = nextOrder(),
 					Parent = Body,
 				})
 				create("UICorner", { CornerRadius = UDim.new(0, 3), Parent = SliderFrame })
+
+				local Fill = create("Frame", {
+					Name = "Fill",
+					Size = UDim2.new((default - min) / math.max(max - min, 1), 0, 1, 0),
+					BackgroundColor3 = Theme.AccentBar,
+					BackgroundTransparency = 0.55,
+					BorderSizePixel = 0,
+					ZIndex = 1,
+					Parent = SliderFrame,
+				})
 
 				local Label = create("TextLabel", {
 					Size = UDim2.new(1, 0, 1, 0),
@@ -608,6 +628,7 @@ function NovaUI:CreateWindow(title)
 					Font = Theme.FontRegular,
 					TextSize = 12,
 					TextColor3 = Theme.TextPrimary,
+					ZIndex = 2,
 					Parent = SliderFrame,
 				})
 
@@ -617,6 +638,7 @@ function NovaUI:CreateWindow(title)
 				local function updateFromX(xPos)
 					local rel = math.clamp((xPos - SliderFrame.AbsolutePosition.X) / SliderFrame.AbsoluteSize.X, 0, 1)
 					value = math.floor(min + rel * (max - min) + 0.5)
+					Fill.Size = UDim2.new((value - min) / math.max(max - min, 1), 0, 1, 0)
 					Label.Text = text .. ": " .. tostring(value) .. "/" .. tostring(max)
 					if callback then callback(value) end
 				end
@@ -641,6 +663,7 @@ function NovaUI:CreateWindow(title)
 				return {
 					Set = function(_, v)
 						value = math.clamp(v, min, max)
+						Fill.Size = UDim2.new((value - min) / math.max(max - min, 1), 0, 1, 0)
 						Label.Text = text .. ": " .. tostring(value) .. "/" .. tostring(max)
 					end,
 					Get = function() return value end,
@@ -706,16 +729,20 @@ function NovaUI:CreateWindow(title)
 					Parent = Box,
 				})
 
+				-- La lista se parentea directamente al ScreenGui (no a Box/Main) para que no quede
+				-- recortada por el ClipsDescendants de la sección, ni por el ScrollingFrame del tab,
+				-- ni por el ClipsDescendants de la ventana principal.
 				local ListFrame = create("Frame", {
-					Size = UDim2.new(1, 0, 0, #options * 20),
-					Position = UDim2.new(0, 0, 1, 2),
+					Name = "DropdownList",
+					Size = UDim2.new(0, 0, 0, #options * 20),
 					BackgroundColor3 = Theme.ElementBg,
 					BorderSizePixel = 0,
 					Visible = false,
-					ZIndex = 6,
-					Parent = Box,
+					ZIndex = 50,
+					Parent = ScreenGui,
 				})
 				create("UICorner", { CornerRadius = UDim.new(0, 3), Parent = ListFrame })
+				create("UIStroke", { Color = Theme.Stroke, Thickness = 1, Parent = ListFrame })
 				create("UIListLayout", {
 					SortOrder = Enum.SortOrder.LayoutOrder,
 					Parent = ListFrame,
@@ -730,7 +757,8 @@ function NovaUI:CreateWindow(title)
 						Font = Theme.FontRegular,
 						TextSize = 12,
 						TextColor3 = Theme.TextPrimary,
-						ZIndex = 6,
+						ZIndex = 51,
+						AutoButtonColor = false,
 						LayoutOrder = i,
 						Parent = ListFrame,
 					})
@@ -742,8 +770,30 @@ function NovaUI:CreateWindow(title)
 					end)
 				end
 
-				Box.MouseButton1Click:Connect(function()
+				table.insert(Window.Overlays, ListFrame)
+
+				local function openList()
+					-- Posiciona la lista justo debajo de la caja, en coordenadas absolutas de pantalla
+					local boxPos = Box.AbsolutePosition
+					ListFrame.Position = UDim2.new(0, boxPos.X, 0, boxPos.Y + Box.AbsoluteSize.Y + 2)
+					ListFrame.Size = UDim2.new(0, Box.AbsoluteSize.X, 0, #options * 20)
 					ListFrame.Visible = not ListFrame.Visible
+				end
+
+				Box.MouseButton1Click:Connect(openList)
+
+				-- Cierra la lista si se hace click fuera de ella y de la caja
+				UserInputService.InputBegan:Connect(function(input, processed)
+					if not ListFrame.Visible then return end
+					if input.UserInputType ~= Enum.UserInputType.MouseButton1 and input.UserInputType ~= Enum.UserInputType.Touch then return end
+					local pos = input.Position
+					local inBox = pos.X >= Box.AbsolutePosition.X and pos.X <= Box.AbsolutePosition.X + Box.AbsoluteSize.X
+						and pos.Y >= Box.AbsolutePosition.Y and pos.Y <= Box.AbsolutePosition.Y + Box.AbsoluteSize.Y
+					local inList = pos.X >= ListFrame.AbsolutePosition.X and pos.X <= ListFrame.AbsolutePosition.X + ListFrame.AbsoluteSize.X
+						and pos.Y >= ListFrame.AbsolutePosition.Y and pos.Y <= ListFrame.AbsolutePosition.Y + ListFrame.AbsoluteSize.Y
+					if not inBox and not inList then
+						ListFrame.Visible = false
+					end
 				end)
 
 				return {
@@ -794,6 +844,11 @@ function NovaUI:CreateWindow(title)
 	end
 
 	function Window:Destroy()
+		for _, overlay in ipairs(Window.Overlays) do
+			if overlay and overlay.Parent then
+				overlay:Destroy()
+			end
+		end
 		Main:Destroy()
 	end
 
