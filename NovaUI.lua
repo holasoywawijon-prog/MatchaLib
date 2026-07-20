@@ -238,6 +238,16 @@ function NovaUI:Log(message, logType)
 end
 
 ----------------------------------------------------------------
+-- CONTROL DE ORDEN (evita que Roblox reordene por nombre cuando
+-- varios elementos comparten el mismo LayoutOrder por defecto)
+----------------------------------------------------------------
+local function nextOrder(container)
+    local n = (container:GetAttribute("NovaOrder") or 0) + 1
+    container:SetAttribute("NovaOrder", n)
+    return n
+end
+
+----------------------------------------------------------------
 -- FÁBRICA DE ELEMENTOS (estilo plano, fiel a la referencia)
 ----------------------------------------------------------------
 local function attachElementBuilders(target, container)
@@ -247,7 +257,7 @@ local function attachElementBuilders(target, container)
         o = o or {}
         local state = o.Default or false
 
-        local row = create("Frame", {Size = UDim2.new(1, 0, 0, 22), BackgroundTransparency = 1, Parent = container})
+        local row = create("Frame", {Size = UDim2.new(1, 0, 0, 22), BackgroundTransparency = 1, LayoutOrder = nextOrder(container), Parent = container})
 
         local box = create("Frame", {
             Position = UDim2.new(0, 0, 0.5, -7), Size = UDim2.fromOffset(14, 14),
@@ -281,7 +291,7 @@ local function attachElementBuilders(target, container)
         local min, max = o.Min or 0, o.Max or 100
         local value = o.Default or min
 
-        local track = create("Frame", {Size = UDim2.new(1, 0, 0, 24), BackgroundColor3 = Theme.FieldBg, Parent = container}, {corner(3), stroke()})
+        local track = create("Frame", {Size = UDim2.new(1, 0, 0, 24), BackgroundColor3 = Theme.FieldBg, LayoutOrder = nextOrder(container), Parent = container}, {corner(3), stroke()})
         local fill = create("Frame", {Size = UDim2.new((value - min) / (max - min), 0, 1, 0), BackgroundColor3 = Theme.Stroke, BackgroundTransparency = 0.3, Parent = track}, {corner(3)})
         local label = create("TextLabel", {
             BackgroundTransparency = 1, Size = UDim2.new(1, 0, 1, 0), Font = FONT,
@@ -317,7 +327,8 @@ local function attachElementBuilders(target, container)
     function target:AddLabel(text)
         return create("TextLabel", {
             BackgroundTransparency = 1, Size = UDim2.new(1, 0, 0, 18), Font = FONT, Text = text or "",
-            TextColor3 = Theme.TextSecondary, TextSize = 13, TextXAlignment = Enum.TextXAlignment.Left, Parent = container,
+            TextColor3 = Theme.TextSecondary, TextSize = 13, TextXAlignment = Enum.TextXAlignment.Left,
+            LayoutOrder = nextOrder(container), Parent = container,
         })
     end
 
@@ -330,7 +341,7 @@ local function attachElementBuilders(target, container)
 
         if o.Text then target:AddLabel(o.Text) end
 
-        local holder = create("Frame", {Size = UDim2.new(1, 0, 0, 24), BackgroundColor3 = Theme.FieldBg, ClipsDescendants = true, Parent = container}, {corner(3), stroke()})
+        local holder = create("Frame", {Size = UDim2.new(1, 0, 0, 24), BackgroundColor3 = Theme.FieldBg, ClipsDescendants = true, LayoutOrder = nextOrder(container), Parent = container}, {corner(3), stroke()})
         local btn = create("TextButton", {
             Size = UDim2.new(1, 0, 0, 24), BackgroundTransparency = 1, Font = FONT, Text = "  " .. tostring(selected),
             TextColor3 = Theme.TextPrimary, TextSize = 13, TextXAlignment = Enum.TextXAlignment.Left, Parent = holder,
@@ -372,7 +383,8 @@ local function attachElementBuilders(target, container)
         local box = create("TextBox", {
             Size = UDim2.new(1, 0, 0, 24), BackgroundColor3 = Theme.FieldBg, Font = FONT,
             PlaceholderText = o.Placeholder or "Escribe...", Text = "", TextColor3 = Theme.TextPrimary,
-            PlaceholderColor3 = Theme.TextSecondary, TextSize = 13, ClearTextOnFocus = false, Parent = container,
+            PlaceholderColor3 = Theme.TextSecondary, TextSize = 13, ClearTextOnFocus = false,
+            LayoutOrder = nextOrder(container), Parent = container,
         }, {corner(3), stroke()})
         create("UIPadding", {PaddingLeft = UDim.new(0, 8), Parent = box})
         box.FocusLost:Connect(function(enterPressed) if o.Callback then o.Callback(box.Text, enterPressed) end end)
@@ -384,7 +396,7 @@ local function attachElementBuilders(target, container)
         local currentKey = o.Default or Enum.KeyCode.Unknown
         local listening = false
 
-        local row = create("Frame", {Size = UDim2.new(1, 0, 0, 24), BackgroundTransparency = 1, Parent = container})
+        local row = create("Frame", {Size = UDim2.new(1, 0, 0, 24), BackgroundTransparency = 1, LayoutOrder = nextOrder(container), Parent = container})
         create("TextLabel", {BackgroundTransparency = 1, Size = UDim2.new(1, -80, 1, 0), Font = FONT, Text = o.Text or "Keybind", TextColor3 = Theme.TextPrimary, TextSize = 13, TextXAlignment = Enum.TextXAlignment.Left, Parent = row})
         local keyBtn = create("TextButton", {
             Position = UDim2.new(1, -70, 0, 0), Size = UDim2.new(0, 70, 1, 0), BackgroundColor3 = Theme.FieldBg,
@@ -414,7 +426,8 @@ local function attachElementBuilders(target, container)
         o = o or {}
         local btn = create("TextButton", {
             Size = UDim2.new(1, 0, 0, 24), BackgroundColor3 = Theme.FieldBg, AutoButtonColor = false,
-            Font = FONT, Text = o.Text or "Botón", TextColor3 = Theme.TextPrimary, TextSize = 13, Parent = container,
+            Font = FONT, Text = o.Text or "Botón", TextColor3 = Theme.TextPrimary, TextSize = 13,
+            LayoutOrder = nextOrder(container), Parent = container,
         }, {corner(3), stroke()})
         btn.MouseEnter:Connect(function() tween(btn, {BackgroundColor3 = Theme.ColumnHeader}, 0.1) end)
         btn.MouseLeave:Connect(function() tween(btn, {BackgroundColor3 = Theme.FieldBg}, 0.1) end)
@@ -438,18 +451,20 @@ function NovaUI:CreateWindow(opts)
         BackgroundColor3 = Theme.Background, BorderSizePixel = 0, ClipsDescendants = true, Parent = ScreenGui,
     }, {corner(4), stroke()})
 
+    local TITLE_H, TAB_H = 26, 24
+
     -- Barra de título (igual que la referencia: texto en mayúsculas, negrita, arriba a la izquierda)
-    local TitleBar = create("Frame", {Size = UDim2.new(1, 0, 0, 30), BackgroundColor3 = Theme.HeaderBar, BorderSizePixel = 0, Parent = Main}, {corner(4)})
-    create("Frame", {Position = UDim2.new(0, 0, 1, -6), Size = UDim2.new(1, 0, 0, 6), BackgroundColor3 = Theme.HeaderBar, BorderSizePixel = 0, Parent = TitleBar})
+    local TitleBar = create("Frame", {Size = UDim2.new(1, 0, 0, TITLE_H), BackgroundColor3 = Theme.HeaderBar, BorderSizePixel = 0, ZIndex = 3, Parent = Main}, {corner(4)})
+    create("Frame", {Position = UDim2.new(0, 0, 1, -6), Size = UDim2.new(1, 0, 0, 6), BackgroundColor3 = Theme.HeaderBar, BorderSizePixel = 0, ZIndex = 3, Parent = TitleBar})
 
     create("TextLabel", {
         BackgroundTransparency = 1, Position = UDim2.new(0, 12, 0, 0), Size = UDim2.new(1, -50, 1, 0),
-        Font = FONT_BOLD, Text = string.upper(opts.Title or "NOVAUI"), TextColor3 = Theme.TextPrimary, TextSize = 14,
-        TextXAlignment = Enum.TextXAlignment.Left, Parent = TitleBar,
+        Font = FONT_BOLD, Text = string.upper(opts.Title or "NOVAUI"), TextColor3 = Theme.TextPrimary, TextSize = 13,
+        TextXAlignment = Enum.TextXAlignment.Left, ZIndex = 3, Parent = TitleBar,
     })
     local CloseBtn = create("TextButton", {
-        Position = UDim2.new(1, -26, 0, 4), Size = UDim2.new(0, 20, 0, 20), BackgroundTransparency = 1,
-        Text = "X", Font = FONT_BOLD, TextColor3 = Theme.TextSecondary, TextSize = 13, Parent = TitleBar,
+        Position = UDim2.new(1, -24, 0, 2), Size = UDim2.new(0, 18, 0, 18), BackgroundTransparency = 1,
+        Text = "X", Font = FONT_BOLD, TextColor3 = Theme.TextSecondary, TextSize = 13, ZIndex = 3, Parent = TitleBar,
     })
     CloseBtn.MouseEnter:Connect(function() tween(CloseBtn, {TextColor3 = Theme.Error}, 0.1) end)
     CloseBtn.MouseLeave:Connect(function() tween(CloseBtn, {TextColor3 = Theme.TextSecondary}, 0.1) end)
@@ -457,13 +472,17 @@ function NovaUI:CreateWindow(opts)
     makeDraggable(TitleBar, Main)
 
     -- Fila de pestañas simples (texto plano, sin fondo, subrayado si está activa)
-    local TabRow = create("Frame", {Position = UDim2.new(0, 0, 0, 30), Size = UDim2.new(1, 0, 0, 28), BackgroundColor3 = Theme.Background, BorderSizePixel = 0, Parent = Main})
-    create("Frame", {Position = UDim2.new(0, 0, 1, -1), Size = UDim2.new(1, 0, 0, 1), BackgroundColor3 = Theme.Stroke, BorderSizePixel = 0, Parent = TabRow})
-    local TabLayout = create("UIListLayout", {FillDirection = Enum.FillDirection.Horizontal, Padding = UDim.new(0, 18), Parent = TabRow})
-    create("UIPadding", {PaddingLeft = UDim.new(0, 12), PaddingTop = UDim.new(0, 6), Parent = TabRow})
+    local TabRow = create("Frame", {
+        Name = "TabRow", Position = UDim2.new(0, 0, 0, TITLE_H), Size = UDim2.new(1, 0, 0, TAB_H),
+        BackgroundColor3 = Theme.Background, BorderSizePixel = 0, ZIndex = 2, Parent = Main,
+    })
+    create("Frame", {Position = UDim2.new(0, 0, 1, -1), Size = UDim2.new(1, 0, 0, 1), BackgroundColor3 = Theme.Stroke, BorderSizePixel = 0, ZIndex = 2, Parent = TabRow})
+    create("UIListLayout", {FillDirection = Enum.FillDirection.Horizontal, VerticalAlignment = Enum.VerticalAlignment.Center, Padding = UDim.new(0, 18), SortOrder = Enum.SortOrder.LayoutOrder, Parent = TabRow})
+    create("UIPadding", {PaddingLeft = UDim.new(0, 12), Parent = TabRow})
 
     local ContentArea = create("Frame", {
-        Position = UDim2.new(0, 0, 0, 58), Size = UDim2.new(1, 0, 1, -58), BackgroundTransparency = 1, Parent = Main,
+        Name = "ContentArea", Position = UDim2.new(0, 0, 0, TITLE_H + TAB_H), Size = UDim2.new(1, 0, 1, -(TITLE_H + TAB_H)),
+        BackgroundTransparency = 1, ZIndex = 1, Parent = Main,
     })
 
     ----------------------------------------------------------------
@@ -473,12 +492,14 @@ function NovaUI:CreateWindow(opts)
         local Tab = {}
 
         local TabBtn = create("TextButton", {
-            Size = UDim2.new(0, 0, 1, 0), AutomaticSize = Enum.AutomaticSize.X, BackgroundTransparency = 1,
-            Font = FONT_BOLD, Text = name, TextColor3 = Theme.TextSecondary, TextSize = 13, Parent = TabRow,
+            Name = "Tab_" .. name, Size = UDim2.new(0, 0, 1, 0), AutomaticSize = Enum.AutomaticSize.X,
+            BackgroundTransparency = 1, AutoButtonColor = false, Font = FONT_BOLD, Text = name,
+            TextColor3 = Theme.TextSecondary, TextSize = 13, ZIndex = 2,
+            LayoutOrder = nextOrder(TabRow), Parent = TabRow,
         })
         local underline = create("Frame", {
             Position = UDim2.new(0, 0, 1, -1), Size = UDim2.new(1, 0, 0, 2), BackgroundColor3 = Theme.Accent,
-            BackgroundTransparency = 1, Parent = TabBtn,
+            BackgroundTransparency = 1, ZIndex = 2, Parent = TabBtn,
         })
 
         local Page = create("Frame", {Size = UDim2.new(1, 0, 1, 0), BackgroundTransparency = 1, Visible = false, Parent = ContentArea})
@@ -505,7 +526,7 @@ function NovaUI:CreateWindow(opts)
 
             local col = create("Frame", {
                 Size = width and UDim2.new(0, width, 1, 0) or UDim2.new(1, 0, 1, 0),
-                BackgroundTransparency = 1, Parent = Page,
+                BackgroundTransparency = 1, LayoutOrder = nextOrder(Page), Parent = Page,
             })
             if not width then
                 col.Size = UDim2.new(1, 0, 1, 0)
