@@ -1,7 +1,8 @@
 --[[
 	NovaUI - Roblox UI Library
 	Estilo: fondo oscuro, barra de acento lateral, tabs superiores,
-	secciones con checkbox / slider / dropdown.
+	secciones con cuadro de fondo, barra de stats (juego | fps | ms | data)
+	y sistema de notificaciones.
 
 	Uso básico:
 		local NovaUI = loadstring(game:HttpGet("URL_RAW"))()
@@ -11,6 +12,8 @@
 		Section1:AddCheckbox("Enabled", false, function(value) end)
 		Section1:AddSlider("Slider", 0, 30, 0, function(value) end)
 		Section1:AddDropdown("Dropdown", {"Option 1","Option 2"}, "Option 1", function(value) end)
+
+		NovaUI:Notify({Title = "Saved", Content = "Settings saved.", Duration = 4})
 ]]
 
 local NovaUI = {}
@@ -18,23 +21,31 @@ NovaUI.__index = NovaUI
 
 -- ============ CONFIG DE ESTILO ============
 local Theme = {
-	Background      = Color3.fromRGB(30, 30, 30),   -- fondo principal
-	HeaderBg        = Color3.fromRGB(24, 24, 24),   -- barra de título
-	TabBarBg        = Color3.fromRGB(27, 27, 27),
-	SectionHeaderBg = Color3.fromRGB(38, 38, 38),
-	ElementBg       = Color3.fromRGB(45, 45, 45),
-	AccentBar       = Color3.fromRGB(200, 40, 40),  -- barra roja lateral
-	TextPrimary     = Color3.fromRGB(235, 235, 235),
-	TextSecondary   = Color3.fromRGB(160, 160, 160),
+	Background      = Color3.fromRGB(27, 27, 27),   -- fondo principal
+	HeaderBg        = Color3.fromRGB(22, 22, 22),   -- barra de título
+	StatsBarBg      = Color3.fromRGB(18, 18, 18),   -- barra superior de stats
+	TabBarBg        = Color3.fromRGB(30, 30, 30),
+	SectionBg       = Color3.fromRGB(33, 33, 33),   -- cuadro de fondo de la sección
+	SectionHeaderBg = Color3.fromRGB(42, 42, 42),
+	ElementBg       = Color3.fromRGB(46, 46, 46),
+	CheckboxBg      = Color3.fromRGB(22, 22, 22),
+	AccentDark      = Color3.fromRGB(58, 13, 13),   -- rojo oscuro (arriba de la barra)
+	AccentBar       = Color3.fromRGB(199, 58, 58),  -- rojo medio
+	AccentBright    = Color3.fromRGB(224, 75, 75),  -- rojo brillante (abajo de la barra)
+	TextPrimary     = Color3.fromRGB(234, 234, 234),
+	TextSecondary   = Color3.fromRGB(154, 154, 154),
 	TextDisabled    = Color3.fromRGB(110, 110, 110),
-	Stroke          = Color3.fromRGB(15, 15, 15),
-	CheckboxBg      = Color3.fromRGB(20, 20, 20),
+	Stroke          = Color3.fromRGB(16, 16, 16),
+	Success         = Color3.fromRGB(90, 200, 120),
+	Error           = Color3.fromRGB(220, 90, 90),
 	Font            = Enum.Font.GothamBold,
 	FontRegular     = Enum.Font.Gotham,
 }
 
 local TweenService = game:GetService("TweenService")
 local UserInputService = game:GetService("UserInputService")
+local RunService = game:GetService("RunService")
+local Stats = game:GetService("Stats")
 
 -- ============ HELPERS ============
 local function create(class, props)
@@ -43,6 +54,14 @@ local function create(class, props)
 		inst[prop] = value
 	end
 	return inst
+end
+
+local function gradient(frame, colorSequence, rotation)
+	create("UIGradient", {
+		Color = colorSequence,
+		Rotation = rotation or 90,
+		Parent = frame,
+	})
 end
 
 local function makeDraggable(topBar, frame)
@@ -78,14 +97,149 @@ local function makeDraggable(topBar, frame)
 	end)
 end
 
--- ============ WINDOW ============
-function NovaUI:CreateWindow(title)
-	local ScreenGui = create("ScreenGui", {
+-- ============ ROOT SCREENGUI (compartido por ventana y notificaciones) ============
+local RootGui = nil
+local function getRootGui()
+	if RootGui and RootGui.Parent then
+		return RootGui
+	end
+	RootGui = create("ScreenGui", {
 		Name = "NovaUI",
 		ResetOnSpawn = false,
 		ZIndexBehavior = Enum.ZIndexBehavior.Sibling,
 		Parent = (gethui and gethui()) or game:GetService("CoreGui"),
 	})
+	return RootGui
+end
+
+-- ============ SISTEMA DE NOTIFICACIONES ============
+local NotifHolder = nil
+local function getNotifHolder()
+	if NotifHolder and NotifHolder.Parent then
+		return NotifHolder
+	end
+	NotifHolder = create("Frame", {
+		Name = "Notifications",
+		Size = UDim2.new(0, 260, 1, -20),
+		Position = UDim2.new(1, -270, 0, 10),
+		BackgroundTransparency = 1,
+		Parent = getRootGui(),
+	})
+	create("UIListLayout", {
+		HorizontalAlignment = Enum.HorizontalAlignment.Right,
+		VerticalAlignment = Enum.VerticalAlignment.Bottom,
+		Padding = UDim.new(0, 8),
+		SortOrder = Enum.SortOrder.LayoutOrder,
+		Parent = NotifHolder,
+	})
+	return NotifHolder
+end
+
+-- opts: { Title, Content, Duration, Type = "Info"|"Success"|"Error" }
+function NovaUI:Notify(opts)
+	opts = opts or {}
+	local holder = getNotifHolder()
+
+	local accent = Theme.AccentBar
+	if opts.Type == "Success" then accent = Theme.Success end
+	if opts.Type == "Error" then accent = Theme.Error end
+
+	local Toast = create("Frame", {
+		Size = UDim2.new(1, 0, 0, 0),
+		AutomaticSize = Enum.AutomaticSize.Y,
+		BackgroundColor3 = Theme.SectionBg,
+		BorderSizePixel = 0,
+		ClipsDescendants = true,
+		LayoutOrder = os.clock() * 1000,
+		Parent = holder,
+	})
+	create("UICorner", { CornerRadius = UDim.new(0, 5), Parent = Toast })
+	create("UIStroke", { Color = Theme.Stroke, Thickness = 1, Parent = Toast })
+
+	local Bar = create("Frame", {
+		Size = UDim2.new(0, 3, 1, 0),
+		BackgroundColor3 = accent,
+		BorderSizePixel = 0,
+		Parent = Toast,
+	})
+
+	local TextHolder = create("Frame", {
+		Size = UDim2.new(1, -16, 0, 0),
+		AutomaticSize = Enum.AutomaticSize.Y,
+		Position = UDim2.new(0, 12, 0, 0),
+		BackgroundTransparency = 1,
+		Parent = Toast,
+	})
+	create("UIListLayout", {
+		Padding = UDim.new(0, 2),
+		SortOrder = Enum.SortOrder.LayoutOrder,
+		Parent = TextHolder,
+	})
+	create("UIPadding", {
+		PaddingTop = UDim.new(0, 8),
+		PaddingBottom = UDim.new(0, 8),
+		Parent = TextHolder,
+	})
+
+	create("TextLabel", {
+		Size = UDim2.new(1, 0, 0, 16),
+		BackgroundTransparency = 1,
+		Text = opts.Title or "Notification",
+		Font = Theme.Font,
+		TextSize = 13,
+		TextColor3 = Theme.TextPrimary,
+		TextXAlignment = Enum.TextXAlignment.Left,
+		LayoutOrder = 1,
+		Parent = TextHolder,
+	})
+
+	if opts.Content then
+		create("TextLabel", {
+			Size = UDim2.new(1, 0, 0, 0),
+			AutomaticSize = Enum.AutomaticSize.Y,
+			BackgroundTransparency = 1,
+			Text = opts.Content,
+			Font = Theme.FontRegular,
+			TextSize = 12,
+			TextColor3 = Theme.TextSecondary,
+			TextXAlignment = Enum.TextXAlignment.Left,
+			TextWrapped = true,
+			LayoutOrder = 2,
+			Parent = TextHolder,
+		})
+	end
+
+	Toast.BackgroundTransparency = 1
+	Bar.BackgroundTransparency = 1
+	for _, child in ipairs(TextHolder:GetChildren()) do
+		if child:IsA("TextLabel") then child.TextTransparency = 1 end
+	end
+
+	TweenService:Create(Toast, TweenInfo.new(0.2), { BackgroundTransparency = 0 }):Play()
+	TweenService:Create(Bar, TweenInfo.new(0.2), { BackgroundTransparency = 0 }):Play()
+	for _, child in ipairs(TextHolder:GetChildren()) do
+		if child:IsA("TextLabel") then
+			TweenService:Create(child, TweenInfo.new(0.2), { TextTransparency = 0 }):Play()
+		end
+	end
+
+	task.delay(opts.Duration or 4, function()
+		if not Toast.Parent then return end
+		TweenService:Create(Toast, TweenInfo.new(0.25), { BackgroundTransparency = 1 }):Play()
+		TweenService:Create(Bar, TweenInfo.new(0.25), { BackgroundTransparency = 1 }):Play()
+		for _, child in ipairs(TextHolder:GetChildren()) do
+			if child:IsA("TextLabel") then
+				TweenService:Create(child, TweenInfo.new(0.25), { TextTransparency = 1 }):Play()
+			end
+		end
+		task.wait(0.25)
+		Toast:Destroy()
+	end)
+end
+
+-- ============ WINDOW ============
+function NovaUI:CreateWindow(title)
+	local ScreenGui = getRootGui()
 
 	local Main = create("Frame", {
 		Name = "Main",
@@ -97,34 +251,85 @@ function NovaUI:CreateWindow(title)
 	})
 	create("UICorner", { CornerRadius = UDim.new(0, 6), Parent = Main })
 	create("UIStroke", { Color = Theme.Stroke, Thickness = 1, Parent = Main })
+	create("UIPadding", {}) -- no-op placeholder kept out; Main clips children via ClipsDescendants below
+	Main.ClipsDescendants = true
 
-	-- Barra de acento lateral (roja) - ocupa el lado izquierdo, debajo del header
+	-- ============ BARRA DE STATS (juego | fps | ms | data) ============
+	local StatsBar = create("Frame", {
+		Name = "StatsBar",
+		Size = UDim2.new(1, 0, 0, 22),
+		BackgroundColor3 = Theme.StatsBarBg,
+		BorderSizePixel = 0,
+		Parent = Main,
+	})
+	local StatsLabel = create("TextLabel", {
+		Name = "StatsLabel",
+		Size = UDim2.new(1, -20, 1, 0),
+		Position = UDim2.new(0, 10, 0, 0),
+		BackgroundTransparency = 1,
+		Text = "",
+		Font = Theme.FontRegular,
+		TextSize = 11,
+		TextColor3 = Theme.TextSecondary,
+		TextXAlignment = Enum.TextXAlignment.Left,
+		Parent = StatsBar,
+	})
+
+	do
+		local frameCount, lastClock, fps = 0, os.clock(), 0
+		local heartbeatConn
+		heartbeatConn = RunService.Heartbeat:Connect(function()
+			frameCount = frameCount + 1
+			local now = os.clock()
+			if now - lastClock >= 1 then
+				fps = frameCount
+				frameCount = 0
+				lastClock = now
+
+				local ok, ping = pcall(function()
+					return math.floor(Stats.Network.ServerStatsItem["Data Ping"]:GetValue())
+				end)
+				ping = ok and ping or 0
+
+				local dataOk, dataKbps = pcall(function()
+					return Stats.DataReceiveKbps + Stats.DataSendKbps
+				end)
+				local dataStr = dataOk and (string.format("%.1f KB/s", dataKbps)) or "0 KB/s"
+
+				local gameName = "Game"
+				pcall(function() gameName = game:GetService("MarketplaceService"):GetProductInfo(game.PlaceId).Name end)
+
+				StatsLabel.Text = string.format("%s | %d FPS | %d ms | %s", gameName, fps, ping, dataStr)
+			end
+			if not StatsBar.Parent then
+				heartbeatConn:Disconnect()
+			end
+		end)
+	end
+
+	-- Barra de acento lateral (roja, degradado) - debajo de header + tabs
 	local AccentBar = create("Frame", {
 		Name = "AccentBar",
-		Size = UDim2.new(0, 4, 1, -70),
-		Position = UDim2.new(0, 0, 0, 70),
+		Size = UDim2.new(0, 4, 1, -92),
+		Position = UDim2.new(0, 0, 0, 92),
 		BackgroundColor3 = Theme.AccentBar,
 		BorderSizePixel = 0,
 		Parent = Main,
 	})
+	gradient(AccentBar, ColorSequence.new({
+		ColorSequenceKeypoint.new(0, Theme.AccentDark),
+		ColorSequenceKeypoint.new(0.6, Theme.AccentBar),
+		ColorSequenceKeypoint.new(1, Theme.AccentBright),
+	}), 90)
 
 	-- Header / Título
 	local Header = create("Frame", {
 		Name = "Header",
 		Size = UDim2.new(1, 0, 0, 36),
+		Position = UDim2.new(0, 0, 0, 22),
 		BackgroundColor3 = Theme.HeaderBg,
 		BorderSizePixel = 0,
 		Parent = Main,
-	})
-	create("UICorner", { CornerRadius = UDim.new(0, 6), Parent = Header })
-	-- Cubrir esquinas inferiores del header para que no se redondeen
-	create("Frame", {
-		Size = UDim2.new(1, 0, 0, 10),
-		Position = UDim2.new(0, 0, 1, -10),
-		BackgroundColor3 = Theme.HeaderBg,
-		BorderSizePixel = 0,
-		ZIndex = 0,
-		Parent = Header,
 	})
 
 	local TitleLabel = create("TextLabel", {
@@ -140,13 +345,14 @@ function NovaUI:CreateWindow(title)
 		Parent = Header,
 	})
 
+	makeDraggable(StatsBar, Main)
 	makeDraggable(Header, Main)
 
 	-- Barra de Tabs
 	local TabBar = create("Frame", {
 		Name = "TabBar",
 		Size = UDim2.new(1, 0, 0, 34),
-		Position = UDim2.new(0, 0, 0, 36),
+		Position = UDim2.new(0, 0, 0, 58),
 		BackgroundColor3 = Theme.TabBarBg,
 		BorderSizePixel = 0,
 		Parent = Main,
@@ -159,7 +365,7 @@ function NovaUI:CreateWindow(title)
 		Parent = TabBar,
 	})
 
-	local TabButtonsLayout = create("UIListLayout", {
+	create("UIListLayout", {
 		FillDirection = Enum.FillDirection.Horizontal,
 		Padding = UDim.new(0, 4),
 		VerticalAlignment = Enum.VerticalAlignment.Center,
@@ -173,8 +379,8 @@ function NovaUI:CreateWindow(title)
 	-- Contenedor de contenido de tabs
 	local ContentArea = create("Frame", {
 		Name = "ContentArea",
-		Size = UDim2.new(1, -4, 1, -70),
-		Position = UDim2.new(0, 4, 0, 70),
+		Size = UDim2.new(1, -4, 1, -92),
+		Position = UDim2.new(0, 4, 0, 92),
 		BackgroundTransparency = 1,
 		Parent = Main,
 	})
@@ -227,14 +433,14 @@ function NovaUI:CreateWindow(title)
 		})
 		create("UIListLayout", {
 			FillDirection = Enum.FillDirection.Horizontal,
-			Padding = UDim.new(0, 8),
+			Padding = UDim.new(0, 10),
 			SortOrder = Enum.SortOrder.LayoutOrder,
 			Parent = TabPage,
 		})
 		create("UIPadding", {
-			PaddingLeft = UDim.new(0, 10),
+			PaddingLeft = UDim.new(0, 12),
 			PaddingRight = UDim.new(0, 10),
-			PaddingTop = UDim.new(0, 8),
+			PaddingTop = UDim.new(0, 10),
 			Parent = TabPage,
 		})
 
@@ -255,16 +461,21 @@ function NovaUI:CreateWindow(title)
 
 		TabButton.MouseButton1Click:Connect(selectTab)
 
-		-- ============ SECTION (columna dentro del tab) ============
+		-- ============ SECTION (columna dentro del tab, con cuadro de fondo) ============
 		function Tab:CreateSection(sectionName)
 			local Column = create("Frame", {
 				Name = sectionName,
-				Size = UDim2.new(0, 195, 0, 0),
+				Size = UDim2.new(0, 200, 0, 0),
 				AutomaticSize = Enum.AutomaticSize.Y,
-				BackgroundTransparency = 1,
+				BackgroundColor3 = Theme.SectionBg,
+				BorderSizePixel = 0,
+				ClipsDescendants = true,
 				LayoutOrder = #Tab.Columns + 1,
 				Parent = TabPage,
 			})
+			create("UICorner", { CornerRadius = UDim.new(0, 4), Parent = Column })
+			create("UIStroke", { Color = Theme.Stroke, Thickness = 1, Parent = Column })
+
 			local ColLayout = create("UIListLayout", {
 				Padding = UDim.new(0, 0),
 				SortOrder = Enum.SortOrder.LayoutOrder,
@@ -278,7 +489,6 @@ function NovaUI:CreateWindow(title)
 				LayoutOrder = 1,
 				Parent = Column,
 			})
-			create("UICorner", { CornerRadius = UDim.new(0, 4), Parent = SectionHeader })
 			create("TextLabel", {
 				Size = UDim2.new(1, -16, 1, 0),
 				Position = UDim2.new(0, 8, 0, 0),
@@ -299,14 +509,16 @@ function NovaUI:CreateWindow(title)
 				LayoutOrder = 2,
 				Parent = Column,
 			})
-			local BodyLayout = create("UIListLayout", {
+			create("UIListLayout", {
 				Padding = UDim.new(0, 6),
 				SortOrder = Enum.SortOrder.LayoutOrder,
 				Parent = Body,
 			})
 			create("UIPadding", {
 				PaddingTop = UDim.new(0, 8),
-				PaddingBottom = UDim.new(0, 4),
+				PaddingBottom = UDim.new(0, 8),
+				PaddingLeft = UDim.new(0, 8),
+				PaddingRight = UDim.new(0, 8),
 				Parent = Body,
 			})
 
@@ -387,16 +599,7 @@ function NovaUI:CreateWindow(title)
 					LayoutOrder = nextOrder(),
 					Parent = Body,
 				})
-				create("UICorner", { CornerRadius = UDim.new(0, 4), Parent = SliderFrame })
-
-				local Fill = create("Frame", {
-					Size = UDim2.new((default - min) / (max - min), 0, 1, 0),
-					BackgroundColor3 = Theme.AccentBar,
-					BackgroundTransparency = 0.75,
-					BorderSizePixel = 0,
-					Parent = SliderFrame,
-				})
-				create("UICorner", { CornerRadius = UDim.new(0, 4), Parent = Fill })
+				create("UICorner", { CornerRadius = UDim.new(0, 3), Parent = SliderFrame })
 
 				local Label = create("TextLabel", {
 					Size = UDim2.new(1, 0, 1, 0),
@@ -414,7 +617,6 @@ function NovaUI:CreateWindow(title)
 				local function updateFromX(xPos)
 					local rel = math.clamp((xPos - SliderFrame.AbsolutePosition.X) / SliderFrame.AbsoluteSize.X, 0, 1)
 					value = math.floor(min + rel * (max - min) + 0.5)
-					Fill.Size = UDim2.new((value - min) / (max - min), 0, 1, 0)
 					Label.Text = text .. ": " .. tostring(value) .. "/" .. tostring(max)
 					if callback then callback(value) end
 				end
@@ -439,7 +641,6 @@ function NovaUI:CreateWindow(title)
 				return {
 					Set = function(_, v)
 						value = math.clamp(v, min, max)
-						Fill.Size = UDim2.new((value - min) / (max - min), 0, 1, 0)
 						Label.Text = text .. ": " .. tostring(value) .. "/" .. tostring(max)
 					end,
 					Get = function() return value end,
@@ -475,9 +676,10 @@ function NovaUI:CreateWindow(title)
 					BorderSizePixel = 0,
 					Text = "",
 					AutoButtonColor = false,
+					ZIndex = 4,
 					Parent = Container,
 				})
-				create("UICorner", { CornerRadius = UDim.new(0, 4), Parent = Box })
+				create("UICorner", { CornerRadius = UDim.new(0, 3), Parent = Box })
 
 				local SelectedLabel = create("TextLabel", {
 					Size = UDim2.new(1, -26, 1, 0),
@@ -488,10 +690,11 @@ function NovaUI:CreateWindow(title)
 					TextSize = 12,
 					TextColor3 = Theme.TextSecondary,
 					TextXAlignment = Enum.TextXAlignment.Left,
+					ZIndex = 4,
 					Parent = Box,
 				})
 
-				local Arrow = create("TextLabel", {
+				create("TextLabel", {
 					Size = UDim2.new(0, 20, 1, 0),
 					Position = UDim2.new(1, -22, 0, 0),
 					BackgroundTransparency = 1,
@@ -499,6 +702,7 @@ function NovaUI:CreateWindow(title)
 					Font = Theme.FontRegular,
 					TextSize = 10,
 					TextColor3 = Theme.TextSecondary,
+					ZIndex = 4,
 					Parent = Box,
 				})
 
@@ -508,11 +712,11 @@ function NovaUI:CreateWindow(title)
 					BackgroundColor3 = Theme.ElementBg,
 					BorderSizePixel = 0,
 					Visible = false,
-					ZIndex = 5,
+					ZIndex = 6,
 					Parent = Box,
 				})
-				create("UICorner", { CornerRadius = UDim.new(0, 4), Parent = ListFrame })
-				local ListLayout = create("UIListLayout", {
+				create("UICorner", { CornerRadius = UDim.new(0, 3), Parent = ListFrame })
+				create("UIListLayout", {
 					SortOrder = Enum.SortOrder.LayoutOrder,
 					Parent = ListFrame,
 				})
@@ -526,7 +730,7 @@ function NovaUI:CreateWindow(title)
 						Font = Theme.FontRegular,
 						TextSize = 12,
 						TextColor3 = Theme.TextPrimary,
-						ZIndex = 5,
+						ZIndex = 6,
 						LayoutOrder = i,
 						Parent = ListFrame,
 					})
@@ -551,6 +755,27 @@ function NovaUI:CreateWindow(title)
 				}
 			end
 
+			-- ---- Button ----
+			function Section:AddButton(text, callback)
+				local Btn = create("TextButton", {
+					Size = UDim2.new(1, 0, 0, 22),
+					BackgroundColor3 = Theme.ElementBg,
+					BorderSizePixel = 0,
+					Text = text,
+					Font = Theme.FontRegular,
+					TextSize = 12,
+					TextColor3 = Theme.TextPrimary,
+					AutoButtonColor = false,
+					LayoutOrder = nextOrder(),
+					Parent = Body,
+				})
+				create("UICorner", { CornerRadius = UDim.new(0, 3), Parent = Btn })
+				Btn.MouseButton1Click:Connect(function()
+					if callback then callback() end
+				end)
+				return Btn
+			end
+
 			table.insert(Tab.Columns, Column)
 			return Section
 		end
@@ -569,7 +794,7 @@ function NovaUI:CreateWindow(title)
 	end
 
 	function Window:Destroy()
-		ScreenGui:Destroy()
+		Main:Destroy()
 	end
 
 	return Window
