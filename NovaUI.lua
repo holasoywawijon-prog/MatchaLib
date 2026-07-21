@@ -380,6 +380,7 @@ function NovaUI:CreateWindow(title)
 		FillDirection = Enum.FillDirection.Horizontal,
 		Padding = UDim.new(0, 4),
 		VerticalAlignment = Enum.VerticalAlignment.Center,
+		SortOrder = Enum.SortOrder.LayoutOrder,
 		Parent = TabBar,
 	})
 	create("UIPadding", {
@@ -407,17 +408,23 @@ function NovaUI:CreateWindow(title)
 
 	-- ============ TAB ============
 	function Window:CreateTab(tabName)
-		local textWidth = measureText(tabName, 13, Theme.Font)
-		local buttonWidth = math.ceil(textWidth) + 16 -- padding horizontal total
+		-- Ancho fijo estimado por longitud de texto (no depende de TextService,
+		-- que puede fallar o comportarse distinto según el entorno de ejecución).
+		local buttonWidth = math.max(50, 22 + (#tabName * 7))
 
 		local TabButton = create("TextButton", {
-			Name = tabName,
-			Size = UDim2.new(0, buttonWidth, 1, 0),
+			Name = "TabButton_" .. tabName,
+			Size = UDim2.new(0, buttonWidth, 0, 24),
+			Position = UDim2.new(0, 0, 0.5, -12),
 			BackgroundTransparency = 1,
+			AutoButtonColor = false,
 			Text = "",
+			LayoutOrder = #Window.Tabs + 1,
+			ZIndex = 2,
 			Parent = TabBar,
 		})
 		local TabLabel = create("TextLabel", {
+			Name = "TabLabel",
 			Size = UDim2.new(1, 0, 1, 0),
 			BackgroundTransparency = 1,
 			Text = tabName,
@@ -425,6 +432,19 @@ function NovaUI:CreateWindow(title)
 			TextSize = 13,
 			TextColor3 = Theme.TextSecondary,
 			TextXAlignment = Enum.TextXAlignment.Center,
+			TextYAlignment = Enum.TextYAlignment.Center,
+			ZIndex = 3,
+			Parent = TabButton,
+		})
+
+		local Underline = create("Frame", {
+			Name = "Underline",
+			Size = UDim2.new(1, -8, 0, 2),
+			Position = UDim2.new(0, 4, 1, -2),
+			BackgroundColor3 = Theme.AccentBar,
+			BorderSizePixel = 0,
+			Visible = false,
+			ZIndex = 3,
 			Parent = TabButton,
 		})
 
@@ -456,6 +476,7 @@ function NovaUI:CreateWindow(title)
 		local Tab = {}
 		Tab.Button = TabButton
 		Tab.Label = TabLabel
+		Tab.Underline = Underline
 		Tab.Page = TabPage
 		Tab.Columns = {}
 
@@ -463,9 +484,11 @@ function NovaUI:CreateWindow(title)
 			for _, t in pairs(Window.Tabs) do
 				t.Page.Visible = false
 				t.Label.TextColor3 = Theme.TextSecondary
+				t.Underline.Visible = false
 			end
 			TabPage.Visible = true
 			TabLabel.TextColor3 = Theme.TextPrimary
+			Underline.Visible = true
 		end
 
 		TabButton.MouseButton1Click:Connect(selectTab)
@@ -824,6 +847,83 @@ function NovaUI:CreateWindow(title)
 					if callback then callback() end
 				end)
 				return Btn
+			end
+
+			-- ---- Keybind ----
+			function Section:AddKeybind(text, defaultKey, callback)
+				local Container = create("Frame", {
+					Size = UDim2.new(1, 0, 0, 20),
+					BackgroundTransparency = 1,
+					LayoutOrder = nextOrder(),
+					Parent = Body,
+				})
+
+				create("TextLabel", {
+					Size = UDim2.new(1, -70, 1, 0),
+					BackgroundTransparency = 1,
+					Text = text,
+					Font = Theme.FontRegular,
+					TextSize = 13,
+					TextColor3 = Theme.TextPrimary,
+					TextXAlignment = Enum.TextXAlignment.Left,
+					Parent = Container,
+				})
+
+				local KeyBox = create("TextButton", {
+					Size = UDim2.new(0, 64, 0, 20),
+					Position = UDim2.new(1, -64, 0, 0),
+					BackgroundColor3 = Theme.ElementBg,
+					BorderSizePixel = 0,
+					Text = defaultKey and defaultKey.Name or "NONE",
+					Font = Theme.FontRegular,
+					TextSize = 12,
+					TextColor3 = Theme.TextSecondary,
+					AutoButtonColor = false,
+					Parent = Container,
+				})
+				create("UICorner", { CornerRadius = UDim.new(0, 3), Parent = KeyBox })
+
+				local currentKey = defaultKey
+				local listening = false
+
+				KeyBox.MouseButton1Click:Connect(function()
+					listening = true
+					KeyBox.Text = "..."
+					KeyBox.TextColor3 = Theme.AccentBar
+				end)
+
+				UserInputService.InputBegan:Connect(function(input, processed)
+					if not listening then return end
+					if input.UserInputType ~= Enum.UserInputType.Keyboard then return end
+					if input.KeyCode == Enum.KeyCode.Escape then
+						listening = false
+						KeyBox.Text = currentKey and currentKey.Name or "NONE"
+						KeyBox.TextColor3 = Theme.TextSecondary
+						return
+					end
+					currentKey = input.KeyCode
+					KeyBox.Text = currentKey.Name
+					KeyBox.TextColor3 = Theme.TextSecondary
+					listening = false
+					if callback then callback(currentKey) end
+				end)
+
+				return {
+					Set = function(_, keyCode)
+						currentKey = keyCode
+						KeyBox.Text = keyCode and keyCode.Name or "NONE"
+					end,
+					Get = function() return currentKey end,
+					-- Registra una función que se dispara cada vez que se presiona la tecla asignada
+					OnPress = function(_, fn)
+						UserInputService.InputBegan:Connect(function(input, processed)
+							if processed then return end
+							if currentKey and input.KeyCode == currentKey then
+								fn()
+							end
+						end)
+					end,
+				}
 			end
 
 			table.insert(Tab.Columns, Column)
